@@ -1,10 +1,10 @@
 " ntservices.vim
 " Author: Hari Krishna <hari_vim at yahoo dot com>
-" Last Change: 30-Dec-2003 @ 17:41
+" Last Change: 26-Feb-2004 @ 19:26
 " Created: 16-Jan-2003
-" Requires: Vim-6.2, multvals.vim(3.4), genutils.vim(1.10)
+" Requires: Vim-6.2, multvals.vim(3.5), genutils.vim(1.10)
 " Depends On: Align.vim(17), winmanager.vim
-" Version: 1.6.0
+" Version: 1.7.1
 " Licence: This program is free software; you can redistribute it and/or
 "          modify it under the terms of the GNU General Public License.
 "          See http://www.gnu.org/copyleft/gpl.txt 
@@ -69,15 +69,15 @@ endif
 if !exists("loaded_multvals")
   runtime plugin/multvals.vim
 endif
-if !exists("loaded_multvals") || loaded_multvals < 304
-  echomsg "ntservices: You do not have the latest version of multvals.vim"
+if !exists("loaded_multvals") || loaded_multvals < 305
+  echomsg "ntservices: You need a newer version of multvals.vim plugin"
   finish
 endif
 if !exists("loaded_genutils")
   runtime plugin/genutils.vim
 endif
 if !exists("loaded_genutils") || loaded_genutils < 110
-  echomsg "ntservices: You do not have the latest version of genutils.vim"
+  echomsg "ntservices: You need a newer version of genutils.vim plugin"
   finish
 endif
 let loaded_ntservices = 1
@@ -317,22 +317,22 @@ function! s:SelectFields()
     let response = input('Fields selected: ' . g:ntservFields . "\n" .
 	  \ "Select action to perform (a:add,d:delete,q:quit): ")
     echo "\n"
-    if oldResponse != 'd' || response != 'a'
+    if oldResponse !=# 'd' || response !=# 'a'
       let selField = -1
     endif
-    if response == 'q'
+    if response ==# 'q'
       break
     endif
-    if response != 'd' && response != 'a'
+    if response !=# 'd' && response !=# 'a'
       echo "Invalid selection"
       continue
     endif
     let selField = MvPromptForElement2(
-	  \ (response == 'a') ? s:allFields : g:ntservFields,
-	  \ (response == 'a') ? ',' : ' ', selField,
+	  \ (response ==# 'a') ? s:allFields : g:ntservFields,
+	  \ (response ==# 'a') ? ',' : ' ', selField,
 	  \ "Select the field: ", -1, 0, 2)
     if selField != ''
-      if response == 'd'
+      if response ==# 'd'
 	let g:ntservFields = MvRemoveElement(g:ntservFields, ' ', selField)
       else
 	let g:ntservFields = MvAddElement(g:ntservFields, ' ', selField)
@@ -352,24 +352,24 @@ function! s:DoAction(axn)
   let state = s:GetField('State')
   if servShortName != ''
     setlocal modifiable
-    if a:axn == 'toggle'
-      if state == 'Stopped'
+    if a:axn ==# 'toggle'
+      if state ==# 'Stopped'
 	let reqAxn = 'start'
 	let newTag = 'Running'
-      elseif state == 'Running'
+      elseif state ==# 'Running'
 	let reqAxn = 'stop'
 	let newTag = 'Stopped'
-      elseif state == 'Paused'
+      elseif state ==# 'Paused'
 	let reqAxn = 'continue'
 	let newTag = 'Running'
       else
 	return
       endif
-    elseif a:axn == 'pause'
-      if state == 'Running'
+    elseif a:axn ==# 'pause'
+      if state ==# 'Running'
 	let reqAxn = 'pause'
 	let newTag = 'Paused'
-      elseif state == 'Paused'
+      elseif state ==# 'Paused'
 	let reqAxn = 'continue'
 	let newTag = 'Running'
       else
@@ -451,15 +451,12 @@ endfunction
 
 
 function! s:SetupBuf()
-  setlocal nobuflisted
+  call SetupScratchBuffer()
   setlocal nowrap
-  setlocal noreadonly
   setlocal ts=1
   setlocal bufhidden=hide
-  setlocal buftype=nofile
-  setlocal foldcolumn=0
   command! -buffer -nargs=0 NTS :NTServices
-  command! -buffer -nargs=? NTSsetHost :NtsSetHost
+  command! -buffer -nargs=? NTSsetHost :NtsSetHost <args>
   command! -buffer -nargs=0 NtsRefresh :call <SID>UpdateBuffer(1)
   command! -buffer -nargs=0 NtsToggle :call <SID>DoAction('toggle')
   command! -buffer -nargs=0 NtsPause :call <SID>DoAction('pause')
@@ -489,7 +486,7 @@ endfunction
 
 
 function! s:Quit()
-  if s:opMode != 'WinManager'
+  if s:opMode !=# 'WinManager'
     if NumberOfWindows() == 1
       redraw | echohl WarningMsg | echo "Can't quit the last window" |
 	    \ echohl NONE
