@@ -1,10 +1,12 @@
 " ntservices.vim
 " Author: Hari Krishna <hari_vim at yahoo dot com>
-" Last Change: 17-Jan-2003 @ 12:50
+" Last Change: 18-Jan-2003 @ 12:31
 " Created: 16-Jan-2003
 " Requires: Vim-6.0, winmanager.vim
 " Requires: genutils.vim(1.4), Align.vim(17)
-" Version: 1.0.2
+" Version: 1.1.0
+" Download From:
+"     http://www.vim.org/script.php?script_id=533
 " Description:
 "   - This plugin generates a list of NT services that are installed on the
 "     local NT/W2K/XP machine with the current started status. You can
@@ -64,7 +66,7 @@ function! s:ListServices(force)
       undo
     endif
 
-    let servList = system('cscript.exe //Nologo ' . s:tempFile)
+    let servList = system('cscript.exe //E:vbscript //Nologo ' . s:tempFile)
     if v:shell_error == -1
       call confirm('Error executing cscript.exe, are you sure it is in the ' .
 	    \ 'path?', 'OK', 1, 'Error')
