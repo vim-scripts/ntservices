@@ -1,0 +1,27 @@
+This is a mirror of http://www.vim.org/scripts/script.php?script_id=533
+
+PLEASE READ THE INSTALL SECTION COMPLETELY.
+
+- This plugin generates a list of NT services that are installed on the
+  local NT/W2K/XP machine with the current started status. You can
+  start/stop the service by pressing S or pause/continue the service by
+  pressing P on the corresponding entry.
+- You can open the servicelist window through WinManager (as described in
+  the installation section below) or by assigning a hot key. You can use
+  the same hot key to open/close the window. Alternatively, you can also
+  use the :NTServices command to open/close the services window.
+- You can choose which fields that you want to see by using the
+  NtsFields command. You can select the sort fields by pressing s
+  consecutively and r for reversing the sort direction.
+- If you have permissions, you can view the service list in a remote m/c
+  by using the NtsSetHost command. With no arguments, it prints the
+  current remote host name. To switch back to the local m/c, use "." for
+  the host name.
+- For the sake of speed, the list of services is cached. To see the latest
+  set of services and their states at any time, refresh the window by
+  pressing 'R'.
+- It requires multvals and genutils plugins to be always installed, but
+  others are required only depending on your usage/setting (for a better
+  experience and formatting).
+
+Search_key_words: NT services ntservices ntservice service multvals genutils align Hari Krishna Dara
