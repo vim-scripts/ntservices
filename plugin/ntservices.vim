@@ -1,10 +1,10 @@
 " ntservices.vim
 " Author: Hari Krishna <hari_vim at yahoo dot com>
-" Last Change: 14-Feb-2003 @ 18:05
+" Last Change: 06-Oct-2003 @ 09:37
 " Created: 16-Jan-2003
-" Requires: Vim-6.0, multvals.vim(3.0)
-" Depends On: genutils.vim(1.4), Align.vim(17), winmanager.vim
-" Version: 1.4.1
+" Requires: Vim-6.2, multvals.vim(3.4), genutils.vim(1.10)
+" Depends On: Align.vim(17), winmanager.vim
+" Version: 1.5.7
 " Licence: This program is free software; you can redistribute it and/or
 "          modify it under the terms of the GNU General Public License.
 "          See http://www.gnu.org/copyleft/gpl.txt 
@@ -20,14 +20,14 @@
 "     the same hot key to open/close the window. Alternatively, you can also
 "     use the :NTServices command to open/close the services window.
 "   - You can choose which fields that you want to see by using the
-"     NTservFields command. You can select the sort fields by pressing s
+"     NtsFields command. You can select the sort fields by pressing s
 "     consecutively and r for reversing the sort direction.
-"   - For the sake of efficiency, the list of services is cached. To see the
-"     latest set of services and their states at any time, refresh the window
-"     by pressing 'R'.
-"   - It depends on other plugins, but except multvals, it is not absolutely
-"     necessary to intall others. If you do, you may have a better
-"     experience (as described in Installation section below).
+"   - For the sake of speed, the list of services is cached. To see the latest
+"     set of services and their states at any time, refresh the window by
+"     pressing 'R'.
+"   - It requires multvals and genutils plugins to be always installed, but
+"     others are required only depending on your usage/setting (for a better
+"     experience and formatting).
 " Installation:
 "   - Place the plugin in a plugin diretory under runtimepath and configure
 "     WinManager according to your taste. E.g:
@@ -42,17 +42,38 @@
 "	nmap <silent> <F5> <Plug>NTServices
 "
 "     You can substitute any key or sequnce of keys for <F5> in the above map.
-"   - Requires multvals.vim to be installed.
-"   - If genutils.vim is installed, it is used to sort the service list.
+"   - Requires multvals.vim to be installed. Download from:
+"	http://www.vim.org/script.php?script_id=171
+"   - Requires genutils.vim to be installed. Download from:
+"	http://www.vim.org/script.php?script_id=197
 "   - If Align.vim is installed, it is used to format the output.
 "   - Requires cscript.exe and net.exe to be in the path.
 "   - Use g:ntservFields, g:ntservSortFieldIndex, g:ntservSortDirection to
 "     specify field names, default sort field and the sort direction
-"     respectively. Use NTservFields command to see the list of field names
+"     respectively. Use NtsFields command to see the list of field names
 "     possible.
 " TODO: 
+"   - When controlling remote services, I get a weird error message.
 
 if exists('loaded_ntservices')
+  finish
+endif
+if v:version < 602
+  echomsg "You need Vim 6.2 to run this version of ntservices.vim."
+  finish
+endif
+if !exists("loaded_multvals")
+  runtime plugin/multvals.vim
+endif
+if !exists("loaded_multvals") || loaded_multvals < 304
+  echomsg "ntservices: You need to have multvals version 3.4 or higher"
+  finish
+endif
+if !exists("loaded_genutils")
+  runtime plugin/genutils.vim
+endif
+if !exists("loaded_genutils") || loaded_genutils < 110
+  echomsg "ntservices: You need to have genutils version 1.10 or higher"
   finish
 endif
 let loaded_ntservices = 1
@@ -66,35 +87,32 @@ set cpo&vim
 
 nnoremap <script> <silent> <Plug>NTServices :silent call <SID>ListServices()<cr>
 command! -nargs=0 NTServices :call <SID>ListServices()
-command! -nargs=0 NTservFields :call <SID>SelectFields()
+command! -nargs=0 NtsFields :call <SID>SelectFields()
 
 let g:NTServices_title = "[NT Services]"
+
+if ! exists("g:ntservFields")
+  let g:ntservFields = "DisplayName Name State"
+endif
+
+" Index into the g:ntservFields.
+if ! exists("g:ntservSortFieldIndex")
+  let g:ntservSortFieldIndex = 0
+endif
+
+if ! exists("g:ntservSortDirection")
+  let g:ntservSortDirection = 1
+endif
+
+if ! exists("g:ntservHostName")
+  let g:ntservHostName = '.'
+endif
+
+if !exists('s:myBufNum')
 let s:myBufNum = -1
-let s:vbscript = "
-      \ Option Explicit\n
-      \ Dim strComputer, Text, Prop, expr, result\n
-      \ Dim objWMIService, colServices, objService\n
-      \ strComputer = \".\"\n
-      \ Set objWMIService = GetObject(\"winmgmts:\" _\n
-      \     & \"{impersonationLevel=impersonate}!\\\\\" & strComputer _\n
-      \	    & \"\\root\\cimv2\")\n
-      \ Set colServices = objWMIService.ExecQuery _\n
-      \     (\"Select * from Win32_Service\")\n
-      \ For Each objService in colServices \n
-      \     Text = \"\"\n
-      \     For Each Prop in Wscript.Arguments\n
-      \         Execute(\"expr = \" & Prop & \"_expr\")\n
-      \         If expr = Empty Then\n
-      \             expr = \"objService.\" & Prop\n
-      \         End If\n
-      \         Execute(\"result = \" & expr)\n
-      \         Text = Text & result & vbTab\n
-      \     Next\n
-      \     Wscript.Echo Text\n
-      \ Next\n
-      \ "
-let s:tempFile = ""
 let s:opMode = ""
+endif
+let s:tempFile = ""
 
 let s:allFields = "AcceptPause,AcceptStop,Caption,CheckPoint," .
       \ "CreationClassName,Description,DesktopInteract,DisplayName," .
@@ -102,29 +120,7 @@ let s:allFields = "AcceptPause,AcceptStop,Caption,CheckPoint," .
       \ "ServiceSpecificExitCode,ServiceType,Started,StartMode,StartName," .
       \ "State,Status,SystemCreationClassName,SystemName,TagId,WaitHint"
 
-if exists("g:ntservFields")
-  let s:fields = g:ntservFields
-  unlet g:ntservFields
-elseif !exists("s:fields")
-  let s:fields = "DisplayName Name State"
-endif
-
-" Index into the s:fields.
-if exists("g:ntservSortFieldIndex")
-  let s:sortFieldIndex = g:ntservSortFieldIndex
-  unlet g:ntservSortFieldIndex
-elseif !exists("s:sortFieldIndex")
-  let s:sortFieldIndex = 0
-endif
-
-if exists("g:ntservSortDirection")
-  let s:sortdirection = g:ntservSortDirection
-  unlet g:ntservSortDirection
-elseif !exists("s:sortdirection")
-  let s:sortdirection = 1
-endif
-
-" Space bank.
+" Space reservoir.
 let s:spacer = '                                                               '
 
 function! s:MyScriptId()
@@ -144,10 +140,20 @@ function! <SID>ListServices()
   if s:myBufNum == -1
     " Temporarily modify isfname to avoid treating the name as a pattern.
     let _isf = &isfname
-    set isfname-=\
-    set isfname-=[
-    exec "sp \\". g:NTServices_title
-    let &isfname = _isf
+    let _cpo = &cpo
+    try
+      set isfname-=\
+      set isfname-=[
+      set cpo-=A
+      if exists('+shellslash')
+	exec "sp \\\\". g:NTServices_title
+      else
+	exec "sp \\". g:NTServices_title
+      endif
+    finally
+      let &isfname = _isf
+      let &cpo = _cpo
+    endtry
     let s:myBufNum = bufnr('%')
   else
     let buffer_win = bufwinnr(s:myBufNum)
@@ -171,35 +177,16 @@ function! s:UpdateBuffer(force)
 
     let _report = &report
     set report=99999
-
-    " Go as far as possible in the undo history to conserve Vim resources.
-    let i = 0
-    while line('$') != 1 && i < &undolevels
-      silent! undo
-      let i = i + 1
-    endwhile
-    " Delete the contents if there are still any.
-    silent! 0,$delete _
+    call OptClearBuffer()
 
     if s:tempFile == ""
-      let tempDir = substitute(tempname(), '[^/\\]\+$', '', '')
-      if ! isdirectory(tempDir)
-	call confirm('Invalid temp directory: ' . tempDir, 'OK', 1, 'Error')
+      if ! s:InitVBS()
 	return
-      endif
-      let s:tempFile = tempDir . '\\ntservices.vbs'
-      silent! $put! =s:vbscript
-      let v:errmsg = ""
-      silent! exec 'w! ' . s:tempFile
-      silent! undo
-      if v:errmsg != ""
-	call confirm('Error creating temp file: ' . s:tempFile . "\n" .
-	      \ v:errmsg, 'OK', 1, 'Error')
       endif
     endif
 
-    let servList = system('cscript.exe //E:vbscript //Nologo ' . s:tempFile .
-	  \ ' ' . s:fields)
+    let servList = system('cscript.exe //E:vbscript //Nologo ' .
+	  \ s:tempFile . ' ' . g:ntservFields)
     if v:shell_error == -1
       call confirm("Error executing cscript.exe, are you sure it is in the " .
 	    \ "path?\n" . servList, 'OK', 1, 'Error')
@@ -213,7 +200,7 @@ function! s:UpdateBuffer(force)
     silent! $put =servList
     silent! 1delete _
 
-    let hdr = substitute(s:fields, ' ', "\t", 'g')
+    let hdr = substitute(g:ntservFields, ' ', "\t", 'g')
     let marker = substitute(hdr, '[^\t]', '-', 'g')
     silent! call append(0, hdr)
     if exists('*QSort')
@@ -231,6 +218,7 @@ function! s:UpdateBuffer(force)
 
     if exists('*RestoreSoftPosition')
       call RestoreSoftPosition("NTServices")
+      call ResetSoftPosition("NTServices")
     endif
     setlocal nomodifiable
 
@@ -239,11 +227,82 @@ function! s:UpdateBuffer(force)
 endfunction
 
 
+" This is a dummy function that is used to just contain vbscript for the ease
+"   of modifying it later.
+function! s:_vbScript()
+  if exists("some_non_existing_var")
+    Option Explicit
+    Dim strComputer, Text, Prop, expr, result
+    Dim objWMIService, colServices, objService
+
+    strComputer = "."
+
+    Set objWMIService = GetObject("winmgmts:" _
+        & "{impersonationLevel=impersonate}!\\" & strComputer & "\root\cimv2")
+    Set colServices = objWMIService.ExecQuery _
+        ("Select * from Win32_Service")
+    For Each objService in colServices 
+        Text = ""
+        For Each Prop in Wscript.Arguments
+            Execute("expr = " & Prop & "_expr")
+            If expr = Empty Then
+                expr = "objService." & Prop
+            End If
+            Execute("result = " & expr)
+            Text = Text & result & vbTab
+        Next
+        Wscript.Echo Text
+    Next
+  endif
+endfunction
+
+
+let s:vbscript = ''
+function! s:InitVBS()
+  if s:vbscript == ''
+    let s:vbscript = ExtractFuncListing(s:myScriptId.'_vbScript', 1, 1)
+  endif
+  let tempDir = substitute(tempname(), '[^/\\]\+$', '', '')
+  if ! isdirectory(tempDir)
+    call confirm('Invalid temp directory: ' . tempDir, 'OK', 1, 'Error')
+    return 0
+  endif
+  let s:tempFile = tempDir . '\\ntservices.vbs'
+  silent! $put! =s:vbscript
+  let v:errmsg = ""
+  let _cpo = &cpo
+  try
+    set cpo-=A
+    silent! exec 'w! ' . s:tempFile
+  finally
+    let &cpo = _cpo
+  endtry
+  silent! undo
+  if v:errmsg != ""
+    call confirm('Error creating temp file: ' . s:tempFile . "\n" .
+	  \ v:errmsg, 'OK', 1, 'Error')
+    return 0
+  endif
+  return 1
+endfunction
+
+
+function! s:SetHost(...)
+  if a:0 == 0
+    echo "Current remote host: " . g:ntservHostName
+  else
+    let g:ntservHostName = a:1
+    let s:tempFile = ''
+    call s:UpdateBuffer(1)
+  endif
+endfunction
+
+
 function! s:SelectFields()
   let response = ''
   let oldResponse = ''
   while 1
-    let response = input('Fields selected: ' . s:fields . "\n" .
+    let response = input('Fields selected: ' . g:ntservFields . "\n" .
 	  \ "Select action to perform (a:add,d:delete,q:quit): ")
     echo "\n"
     if oldResponse != 'd' || response != 'a'
@@ -256,13 +315,15 @@ function! s:SelectFields()
       echo "Invalid selection"
       continue
     endif
-    let selField = MvPromptForElement2(s:allFields, ',', selField,
+    let selField = MvPromptForElement2(
+	  \ (response == 'a') ? s:allFields : g:ntservFields,
+	  \ (response == 'a') ? ',' : ' ', selField,
 	  \ "Select the field: ", -1, 0, 2)
     if selField != ''
       if response == 'd'
-	let s:fields = MvRemoveElement(s:fields, ' ', selField)
+	let g:ntservFields = MvRemoveElement(g:ntservFields, ' ', selField)
       else
-	let s:fields = MvAddElement(s:fields, ' ', selField)
+	let g:ntservFields = MvAddElement(g:ntservFields, ' ', selField)
       endif
     endif
     let oldResponse = response
@@ -317,10 +378,13 @@ function! s:DoAction(axn)
 	  let result = system(cmd . ' /y')
 	endif
       endif
-      call confirm(result, "OK", 1, (v:shell_error != 0) ? "Error" : "Info")
       if v:shell_error == 0 || result =~ ' service has already been started\.'
 	    \ || result =~ ' service is not started\.'
+	    \ || result =~ ' service could not be stopped\.'
+	call confirm(result, "OK", 1, "Info")
 	call s:SetFieldNoTrim('State', newTag)
+      else
+	call confirm(result, "OK", 1, "Error")
       endif
     endif
     setlocal nomodifiable
@@ -375,16 +439,21 @@ endfunction
 
 
 function! s:SetupBuf()
+  setlocal nobuflisted
   setlocal nowrap
+  setlocal noreadonly
   setlocal ts=1
   setlocal bufhidden=hide
   setlocal buftype=nofile
-  setlocal nobuflisted
+  setlocal foldcolumn=0
+  command! -buffer -nargs=0 NTS :NTServices
+  command! -buffer -nargs=? NTSsetHost :call <SID>SetHost(<f-args>)
   nnoremap <silent> <buffer> S :call <SID>DoAction('toggle')<CR>
   nnoremap <silent> <buffer> P :call <SID>DoAction('pause')<CR>
   nnoremap <silent> <buffer> R :call <SID>UpdateBuffer(1)<CR>
+  nnoremap <silent> <buffer> q :NTServices<CR>
 
-  " Invert these to mean close instead open.
+  " Invert these to mean close instead of open.
   command! -buffer -nargs=0 NTServices :call s:Quit()
   nnoremap <buffer> <silent> <Plug>NTServices :call s:Quit()<CR>
   " Map the sort keys only if the QSort is available.
@@ -398,13 +467,18 @@ function! s:SetupBuf()
   syn match NTServicePaused  "\%(^.*\t.*\|^\) *Paused *\t.*$"
   hi NTServiceStopped guifg=red ctermfg=red
   hi NTServiceRunning guifg=green ctermfg=green
-  hi NTServicePaused guifg=lightblue ctermfg=lightblue
+  hi NTServicePaused guifg=yellow ctermfg=yellow
 endfunction
 
 
 function! s:Quit()
   if s:opMode != 'WinManager'
-    quit
+    if NumberOfWindows() == 1
+      redraw | echohl WarningMsg | echo "Can't quit the last window" |
+	    \ echohl NONE
+    else
+      quit
+    endif
   endif
 endfunction
 
@@ -415,21 +489,21 @@ function! s:ShowSortMarker()
   setlocal modifiable
   let marker = substitute(getline(1), '\a', '-', 'g')
   let marker = MvReplaceElementAt(marker, "\t",
-	\ substitute(MvElementAt(getline(1), "\t", s:sortFieldIndex), '\a',
-	\   s:sortdirection == 1 ? 'v' : '^', 'g'), s:sortFieldIndex)
+	\ substitute(MvElementAt(getline(1), "\t", g:ntservSortFieldIndex), '\a',
+	\   g:ntservSortDirection == 1 ? 'v' : '^', 'g'), g:ntservSortFieldIndex)
   silent! call setline(2, marker)
   setlocal nomodifiable
 endfunction
 
 
 function! s:GetCurrentSortFieldName()
-  return MvElementAt(s:fields, ' ', s:sortFieldIndex)
+  return MvElementAt(g:ntservFields, ' ', g:ntservSortFieldIndex)
 endfunction
 
 
 function! s:CmpByCurrentSortField(line1, line2, direction)
-  let field1 = MvElementAt(a:line1, "\t", s:sortFieldIndex)
-  let field2 = MvElementAt(a:line2, "\t", s:sortFieldIndex)
+  let field1 = MvElementAt(a:line1, "\t", g:ntservSortFieldIndex)
+  let field2 = MvElementAt(a:line2, "\t", g:ntservSortFieldIndex)
   if field1 =~ '^\s*\d\+\s*$'
     return CmpByNumber(s:Trim(field1), s:Trim(field2), a:direction)
   else
@@ -440,10 +514,10 @@ endfunction
 
 " Reverse the current sort order
 function! s:SortReverse()
-  if exists("s:sortdirection") && s:sortdirection == -1
-    let s:sortdirection = 1
+  if exists("g:ntservSortDirection") && g:ntservSortDirection == -1
+    let g:ntservSortDirection = 1
   else
-    let s:sortdirection = -1
+    let g:ntservSortDirection = -1
   endif
   call s:SortListing()
   call s:ShowSortMarker()
@@ -452,14 +526,14 @@ endfunction
 " Toggle through the different sort orders
 function! s:SortSelect(inc)
   " Select the next sort option
-  let s:sortFieldIndex = s:sortFieldIndex + a:inc
+  let g:ntservSortFieldIndex = g:ntservSortFieldIndex + a:inc
 
   " Wrap the sort type.
-  let max = MvNumberOfElements(s:fields, ' ')
-  if s:sortFieldIndex >= max
-    let s:sortFieldIndex = 0
-  elseif s:sortFieldIndex < 0
-    let s:sortFieldIndex = max
+  let max = MvNumberOfElements(g:ntservFields, ' ')
+  if g:ntservSortFieldIndex >= max
+    let g:ntservSortFieldIndex = 0
+  elseif g:ntservSortFieldIndex < 0
+    let g:ntservSortFieldIndex = max
   endif
 
   call s:SortListing()
@@ -477,12 +551,13 @@ function! s:SortListing()
     " Do the sort
     "3,$call QSort(s:myScriptId . 'CmpByCurrentSortField',
     silent! 3,$call QSort(s:myScriptId . 'CmpByCurrentSortField',
-	  \ s:sortdirection)
+	  \ g:ntservSortDirection)
     " Disallow modification
     setlocal nomodifiable
 
     " Return to the position we started on
     call RestoreSoftPosition('SortListing')
+    call ResetSoftPosition('SortListing')
 endfunction
 "" Sort support }}}
 
