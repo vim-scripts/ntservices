@@ -1,10 +1,10 @@
 " ntservices.vim
 " Author: Hari Krishna <hari_vim at yahoo dot com>
-" Last Change: 06-Oct-2003 @ 09:37
+" Last Change: 30-Dec-2003 @ 17:41
 " Created: 16-Jan-2003
 " Requires: Vim-6.2, multvals.vim(3.4), genutils.vim(1.10)
 " Depends On: Align.vim(17), winmanager.vim
-" Version: 1.5.7
+" Version: 1.6.0
 " Licence: This program is free software; you can redistribute it and/or
 "          modify it under the terms of the GNU General Public License.
 "          See http://www.gnu.org/copyleft/gpl.txt 
@@ -22,6 +22,10 @@
 "   - You can choose which fields that you want to see by using the
 "     NtsFields command. You can select the sort fields by pressing s
 "     consecutively and r for reversing the sort direction.
+"   - If you have permissions, you can view the service list in a remote m/c
+"     by using the NtsSetHost command. With no arguments, it prints the
+"     current remote host name. To switch back to the local m/c, use "." for
+"     the host name.
 "   - For the sake of speed, the list of services is cached. To see the latest
 "     set of services and their states at any time, refresh the window by
 "     pressing 'R'.
@@ -53,7 +57,7 @@
 "     respectively. Use NtsFields command to see the list of field names
 "     possible.
 " TODO: 
-"   - When controlling remote services, I get a weird error message.
+"   - When controlling remote services, I sometimes get a weird error message.
 
 if exists('loaded_ntservices')
   finish
@@ -66,17 +70,21 @@ if !exists("loaded_multvals")
   runtime plugin/multvals.vim
 endif
 if !exists("loaded_multvals") || loaded_multvals < 304
-  echomsg "ntservices: You need to have multvals version 3.4 or higher"
+  echomsg "ntservices: You do not have the latest version of multvals.vim"
   finish
 endif
 if !exists("loaded_genutils")
   runtime plugin/genutils.vim
 endif
 if !exists("loaded_genutils") || loaded_genutils < 110
-  echomsg "ntservices: You need to have genutils version 1.10 or higher"
+  echomsg "ntservices: You do not have the latest version of genutils.vim"
   finish
 endif
 let loaded_ntservices = 1
+
+if ! OnMS()
+  finish
+endif
 
 " Make sure line-continuations won't cause any problem. This will be restored
 "   at the end
@@ -88,6 +96,7 @@ set cpo&vim
 nnoremap <script> <silent> <Plug>NTServices :silent call <SID>ListServices()<cr>
 command! -nargs=0 NTServices :call <SID>ListServices()
 command! -nargs=0 NtsFields :call <SID>SelectFields()
+command! -nargs=? NtsSetHost :call <SID>SetHost(<f-args>)
 
 let g:NTServices_title = "[NT Services]"
 
@@ -198,7 +207,6 @@ function! s:UpdateBuffer(force)
     endif
 
     silent! $put =servList
-    silent! 1delete _
 
     let hdr = substitute(g:ntservFields, ' ', "\t", 'g')
     let marker = substitute(hdr, '[^\t]', '-', 'g')
@@ -262,6 +270,8 @@ function! s:InitVBS()
   if s:vbscript == ''
     let s:vbscript = ExtractFuncListing(s:myScriptId.'_vbScript', 1, 1)
   endif
+  let s:vbscript = substitute(s:vbscript, "\n".'\s*strComputer = "[^'."\n".']*'.
+	\ "\n", "\n strComputer = \"".g:ntservHostName."\"\n", '')
   let tempDir = substitute(tempname(), '[^/\\]\+$', '', '')
   if ! isdirectory(tempDir)
     call confirm('Invalid temp directory: ' . tempDir, 'OK', 1, 'Error')
@@ -293,7 +303,9 @@ function! s:SetHost(...)
   else
     let g:ntservHostName = a:1
     let s:tempFile = ''
-    call s:UpdateBuffer(1)
+    if bufnr('%') == s:myBufNum
+      call s:UpdateBuffer(1)
+    endif
   endif
 endfunction
 
@@ -447,10 +459,13 @@ function! s:SetupBuf()
   setlocal buftype=nofile
   setlocal foldcolumn=0
   command! -buffer -nargs=0 NTS :NTServices
-  command! -buffer -nargs=? NTSsetHost :call <SID>SetHost(<f-args>)
-  nnoremap <silent> <buffer> S :call <SID>DoAction('toggle')<CR>
-  nnoremap <silent> <buffer> P :call <SID>DoAction('pause')<CR>
-  nnoremap <silent> <buffer> R :call <SID>UpdateBuffer(1)<CR>
+  command! -buffer -nargs=? NTSsetHost :NtsSetHost
+  command! -buffer -nargs=0 NtsRefresh :call <SID>UpdateBuffer(1)
+  command! -buffer -nargs=0 NtsToggle :call <SID>DoAction('toggle')
+  command! -buffer -nargs=0 NtsPause :call <SID>DoAction('pause')
+  nnoremap <silent> <buffer> S :NtsToggle<CR>
+  nnoremap <silent> <buffer> P :NtsPause<CR>
+  nnoremap <silent> <buffer> R :NtsRefresh<CR>
   nnoremap <silent> <buffer> q :NTServices<CR>
 
   " Invert these to mean close instead of open.
@@ -458,8 +473,10 @@ function! s:SetupBuf()
   nnoremap <buffer> <silent> <Plug>NTServices :call s:Quit()<CR>
   " Map the sort keys only if the QSort is available.
   if exists('*QSort')
-    nnoremap <silent> <buffer> s :call <SID>SortSelect(1)<CR>
-    nnoremap <silent> <buffer> r :call <SID>SortReverse()<CR>
+    command! -buffer -nargs=0 NtsSortSel :call <SID>SortSelect(1)
+    command! -buffer -nargs=0 NtsSortRev :call <SID>SortReverse()
+    nnoremap <silent> <buffer> s :NtsSortSel<CR>
+    nnoremap <silent> <buffer> r :NtsSortRev<CR>
   endif
 
   syn match NTServiceStopped "\%(^.*\t.*\|^\) *Stopped *\t.*$"
